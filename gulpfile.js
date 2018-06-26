@@ -4,6 +4,7 @@ const gulp = require('gulp');
 const browsersync = require('browser-sync');
 const yargs = require('yargs').argv;
 const path = require('path');
+const fs = require('fs');
 const del = require('del');
 const log = require('fancy-log');
 
