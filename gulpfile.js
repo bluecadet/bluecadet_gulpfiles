@@ -16,6 +16,7 @@ const sass = require('gulp-sass');
 const postcss = require('gulp-postcss');
 const autoprefixer = require('autoprefixer');
 const cssnano = require('cssnano');
+const mediaQuery = require('gulp-group-css-media-queries');
 
 const rollup = require('rollup');
 const rollupEach = require('gulp-rollup-each');
@@ -28,6 +29,9 @@ const imagemin = require('gulp-imagemin');
 
 // const runSequence = require('run-sequence');
 const gulpIf = require('gulp-if');
+const colors = require('colors');
+
+const gulpConfig = '.gulp-config.json';
 
 //
 // Config Settings
@@ -38,7 +42,12 @@ const config = {
   js: 'src/js/*.js',
   sass: 'src/scss/main/*',
   images: 'src/img/**/*',
-  fonts: 'src/fonts/**/*'
+  fonts: 'src/fonts/**/*',
+  miscWatchFiles: ['**/*.php', '**/*.html', '**/*.twig'],
+  useProxy: true,
+  browsersyncOpts: {
+    ghostMode: false
+  }
 }
 
 let rollupPlugins = [
@@ -53,7 +62,7 @@ let postcssPlugins = [
     grid: true,
     browsers: ['last 2 versions', '> 2%', 'ie 10', 'iOS 8', 'iOS 9']
   })
-]
+];
 
 
 //
@@ -76,24 +85,30 @@ gulp.task('clean', () => {
 });
 
 
+
+
+
 //
 // SCSS task
 // ---------
 // Runs on every file in config.scss glob
 //
-gulp.task('sass', () => {
+const build_sass = () => {
   return gulp.src(config.sass)
     .pipe(flatmap( (stream) => {
       return stream
-        .pipe(gulpIf(!config.production, plumber()))
+        // .pipe(gulpIf(!config.production, plumber()))
         .pipe(gulpIf(!config.production, sourcemaps.init()))
           .pipe(sass().on('error', sass.logError))
           .pipe(postcss(postcssPlugins))
+          .pipe(gulpIf(config.production, mediaQuery()))
         .pipe(gulpIf(!config.production, sourcemaps.write('.')))
         .pipe(gulp.dest(`${config.dest}/css/`))
         .pipe(browsersync.stream({ match: '**/*.css' }));
       }));
-});
+}
+
+gulp.task('sass', gulp.series(build_sass));
 
 
 
@@ -104,7 +119,7 @@ gulp.task('sass', () => {
 // -------
 // Process each file into a ruollup bundle
 //
-gulp.task('js', () => {
+const build_js = () => {
   return gulp.src([config.js])
     .pipe(gulpIf( !config.production, sourcemaps.init() ))
       .pipe(rollupEach({
@@ -116,8 +131,19 @@ gulp.task('js', () => {
       }))
     .pipe(gulpIf( !config.production, sourcemaps.write('.') ))
     .pipe(gulp.dest(`${config.dest}/js/`));
-});
+};
 
+gulp.task('js', gulp.series(build_js));
+
+
+//
+// JS - Reload Browsersync on save
+function reload(done) {
+  browsersync.reload();
+  done();
+}
+
+gulp.task('serve:js', gulp.series(build_js, reload));
 
 
 
@@ -127,7 +153,7 @@ gulp.task('js', () => {
 // ----------
 // Process images with imagemin
 //
-gulp.task('images', function () {
+const build_images = () => {
   return gulp.src( config.images )
     .pipe(imagemin([
       imagemin.gifsicle({interlaced: true}),
@@ -142,10 +168,9 @@ gulp.task('images', function () {
       })
     ]))
     .pipe(gulp.dest(`${config.dest}/img/`));
-});
+}
 
-
-
+gulp.task('images', gulp.series(build_images));
 
 
 //
@@ -153,48 +178,89 @@ gulp.task('images', function () {
 // ----------
 // Copy fonts to dist folder
 //
-gulp.task('fonts', function () {
+const copy_fonts = (files, dest) => {
   return gulp.src( config.fonts ).pipe(gulp.dest(`${config.dest}/fonts/`));
-});
+}
+
+gulp.task('fonts', gulp.series(copy_fonts));
 
 
 
 
-// Serve task - Run Browser-sync
-gulp.task('serve', () => {
-  const gulpConfigFile = '.gulp-config.json';
 
-  fs.exists(gulpConfigFile, (exists) => {
-    if (!exists) {
+// ---------------
+// Gulp bulk tasks
+// ---------------
+
+
+//
+// Default task
+//
+gulp.task('default', gulp.series(
+  'clean',
+  gulp.parallel(build_sass, build_js, build_images, copy_fonts)
+));
+
+
+
+//
+// Check to see if a .gulp-config.json file exists, if
+// not, creates one from .ex-gulp-config.json
+//
+const check_gulp_config = (done) => {
+
+  if ( !config.useProxy ) {
+    return false;
+  }
+
+  fs.access(gulpConfig, fs.constants.F_OK, (err) => {
+
+    if (err) {
       let source = fs.createReadStream('.ex-gulp-config.json');
-      let dest = fs.createWriteStream(gulpConfigFile);
+      let dest = fs.createWriteStream(gulpConfig);
       source.pipe(dest);
       source.on('end', () => {
-        console.log('Edit the proxy value in ${gulpConfigFile} \n'.underline.red);
+        log(`Edit the proxy value in ${gulpConfig} \n`.underline.red);
         process.exit(1);
       });
       source.on('error', (err) => {
-        console.log('Copy .ex-gulp-config.json to ${gulpConfigFile} and edit the proxy value \n'.underline.red);
+        log(`Copy .ex-gulp-config.json to ${gulpConfig} and edit the proxy value \n`.underline.red);
         process.exit(1);
       });
     }
   });
+  done();
+}
 
-  const config = JSON.parse(fs.readFileSync(gulpConfigFile));
 
-  if (config.proxy == null) {
-    console.log('Edit the proxy value in .gulp-config.json \n'.underline.red);
-    process.exit(1);
+//
+// Run Browsersync
+//
+const run_serve = () => {
+
+  if ( config.useProxy ) {
+    const g_config = JSON.parse(fs.readFileSync(gulpConfig));
+
+    if (g_config.proxy == null) {
+      log(`Edit the proxy value in ${gulpConfig} \n`.underline.red);
+      process.exit(1);
+    }
+
+    config.browsersyncOpts['proxy'] = g_config.proxy;
   }
 
-  browsersync.init({
-    proxy: config.proxy,
-    ghostMode: false,
-  });
+  browsersync.init(config.browsersyncOpts);
 
-  // gulp.watch('./css/scss/*.scss', ['css']);
-  // gulp.watch('./css/scss/**/*.scss', ['css']);
-  // gulp.watch('./js/**/*.js', ['js:serve']);
-  // gulp.watch(['**/*.php', '**/*.html', '**/*.twig'], ['watch_reload']);
+  gulp.watch(config.scss).on('all', gulp.parallel(build_sass));
+  gulp.watch(config.js).on('all', gulp.series(build_js, reload));
+  gulp.watch(config.miscWatchFiles).on('all', gulp.series(reload));
 
-});
+};
+
+//
+// Serve task - Run Browser-sync
+//
+gulp.task('serve', gulp.series(
+  check_gulp_config,
+  run_serve
+));
