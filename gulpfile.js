@@ -7,6 +7,8 @@ const del = require('del');
 const log = require('fancy-log');
 const flatmap = require('gulp-flatmap');
 const sourcemaps = require('gulp-sourcemaps');
+const gulpIf = require('gulp-if');
+const colors = require('colors');
 
 // Sass
 const sass = require('gulp-sass');
@@ -23,12 +25,6 @@ const rollupCommon  = require('rollup-plugin-commonjs');
 const rollupESLint  = require('rollup-plugin-eslint');
 const uglify        = require('gulp-uglify');
 const imagemin      = require('gulp-imagemin');
-
-// const runSequence = require('run-sequence');
-const gulpIf = require('gulp-if');
-const colors = require('colors');
-
-const gulpConfig = '.gulp-config.json';
 
 //
 // Config Settings
@@ -55,11 +51,12 @@ const config = {
     dest: 'dist/fonts/'
   },
   miscWatchFiles: ['**/*.php', '**/*.html', '**/*.twig'],
+  autoprefixerBrowsers: ['last 2 versions', '> 2%', 'ie 10', 'iOS 8', 'iOS 9'],
+  gulpConfig: '.gulp-config.json',
   useProxy: true,
   browsersyncOpts: {
     ghostMode: false
-  },
-  autoprefixerBrowsers: ['last 2 versions', '> 2%', 'ie 10', 'iOS 8', 'iOS 9']
+  }
 }
 
 //
@@ -101,18 +98,18 @@ const checkGulpConfig = (done) => {
     return false;
   }
 
-  fs.access(gulpConfig, fs.constants.F_OK, (err) => {
+  fs.access(config.gulpConfig, fs.constants.F_OK, (err) => {
 
     if (err) {
       let source = fs.createReadStream('.ex-gulp-config.json');
-      let dest = fs.createWriteStream(gulpConfig);
+      let dest = fs.createWriteStream(config.gulpConfig);
       source.pipe(dest);
       source.on('end', () => {
-        log(`Edit the proxy value in ${gulpConfig} \n`.underline.red);
+        log(`Edit the proxy value in ${config.gulpConfig} \n`.underline.red);
         process.exit(1);
       });
       source.on('error', (err) => {
-        log(`Copy .ex-gulp-config.json to ${gulpConfig} and edit the proxy value \n`.underline.red);
+        log(`Copy .ex-gulp-config.json to ${config.gulpConfig} and edit the proxy value \n`.underline.red);
         process.exit(1);
       });
     }
@@ -261,10 +258,10 @@ gulp.task('build', gulp.series(
 gulp.task('serve:run', (cb) => {
 
   if ( config.useProxy ) {
-    const g_config = JSON.parse(fs.readFileSync(gulpConfig));
+    const g_config = JSON.parse(fs.readFileSync(config.gulpConfig));
 
     if (g_config.proxy == null) {
-      log(`Edit the proxy value in ${gulpConfig} \n`.underline.red);
+      log(`Edit the proxy value in ${config.gulpConfig} \n`.underline.red);
       process.exit(1);
     }
 
