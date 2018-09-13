@@ -1,0 +1,11 @@
+.app {
+  font-size: 18px;
+  transform: translate3d(0, 5px, 0);
+
+  &__title {
+    font-size: 24px;
+  }
+}
+
+@import 'partials/partial';
+@import "../components/**/*.scss";

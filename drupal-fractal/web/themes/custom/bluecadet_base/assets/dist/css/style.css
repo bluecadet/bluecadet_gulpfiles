@@ -1,0 +1,20 @@
+.app {
+  font-size: 18px;
+  -webkit-transform: translate3d(0, 5px, 0);
+          transform: translate3d(0, 5px, 0); }
+  .app__title {
+    font-size: 24px; }
+
+.partial {
+  font-size: 19px; }
+
+.bc-btn {
+  display: inline-block;
+  color: black;
+  text-decoration: none;
+  padding: 10px 35px;
+  font-family: monospace;
+  background-color: transparent;
+  border: 0; }
+
+/*# sourceMappingURL=style.css.map */
