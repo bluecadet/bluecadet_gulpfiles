@@ -1,0 +1,1 @@
+{"version":3,"sources":["admin.scss"],"names":[],"mappings":"AAAA;EACE,gBAAe,EAKhB;EAHC;IACE,gBAAe,EAChB","file":"admin.css","sourcesContent":[".admin {\n  font-size: 18px;\n\n  &__title {\n    font-size: 24px;\n  }\n}"]}

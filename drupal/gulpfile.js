@@ -9,6 +9,8 @@ const flatmap = require('gulp-flatmap');
 const sourcemaps = require('gulp-sourcemaps');
 const gulpIf = require('gulp-if');
 const colors = require('colors');
+const path = require('path');
+const util = require('util');
 
 // Sass
 const sass = require('gulp-sass');
@@ -26,31 +28,47 @@ const rollupESLint  = require('rollup-plugin-eslint');
 const uglify        = require('gulp-uglify');
 const imagemin      = require('gulp-imagemin');
 
+
+// Definition Vars
+const dest_dir_name = 'assets/dist';
+const src_dir_name  = 'assets/src';
+let   production    = yargs.production ? yargs.production : false;
+
+
+
 //
 // Config Settings
 //
 const config = {
-  production: yargs.production ? yargs.production : false,
-  dest: 'dist',
-  js: {
-    main: 'src/js/*.js',
-    watch: 'src/js/**/*',
-    dest: 'dist/js/'
+  drupal: {
+    themes: [           // Theme Directory Names
+      'bluecadet_base'
+    ],
+    modules: [          // Module Directory Names
+      'test'
+    ]
   },
-  sass: {
-    main: 'src/scss/main/*',
-    watch: 'src/scss/**/*',
-    dest: 'dist/css/'
+  paths: {
+    js: {
+      main:    src_dir_name + '/js/*.js',
+      watch:   src_dir_name + '/js/**/*.js',
+      dest:   dest_dir_name + '/js/'
+    },
+    sass: {
+      main:    src_dir_name + '/scss/*.scss',
+      watch:   src_dir_name + '/scss/**/*.scss',
+      dest:   dest_dir_name + '/css/',
+    },
+    images: {
+      main:    src_dir_name + '/images/**/*',
+      dest:   dest_dir_name + '/images/'
+    },
+    watch_files: [
+      '**/*.php',
+      '**/*.html',
+      '**/*.twig'
+    ],
   },
-  images: {
-    src: 'src/img/**/*',
-    dest: 'dist/img/'
-  },
-  fonts: {
-    src: 'src/fonts/**/*',
-    dest: 'dist/fonts/'
-  },
-  miscWatchFiles: ['**/*.php', '**/*.html', '**/*.twig'],
   autoprefixerBrowsers: ['last 2 versions', '> 2%', 'ie 10', 'iOS 8', 'iOS 9'],
   gulpConfig: '.gulp-config.json',
   useProxy: true,
@@ -58,18 +76,6 @@ const config = {
     ghostMode: false
   }
 }
-
-//
-// Rollup plugins
-//
-let rollupPlugins = [
-  rollupBabel(),
-  rollupResolve(),
-  rollupESLint(),
-  // rollupCommon(),
-];
-
-
 
 
 
@@ -90,7 +96,7 @@ const reload = (done) => {
 
 //
 // Check to see if a .gulp-config.json file exists, if
-// not, create one from .ex-gulp-config.json
+// not, creates one from .ex-gulp-config.json
 //
 const checkGulpConfig = (done) => {
 
@@ -123,87 +129,63 @@ const checkGulpConfig = (done) => {
 // not, creates one from .ex-gulp-config.json
 //
 const setProductionTrue = (done) => {
-  config.production = true;
+  production = true;
   done();
 };
 
 
 
-
-
-// ----------
-// GULP TASKS
-// ----------
+//
+// Compile Sass
+// Tasks for each sass file
+//
+const compileSass = (stream, css_dest_path) => {
+  return stream
+    .pipe(gulpIf(!production, sourcemaps.init()))
+      .pipe(sass({
+        includePaths: ['node_modules']
+      }).on('error', sass.logError))
+      .pipe(autoprefixer({
+        grid: true,
+        browsers: config.autoprefixerBrowsers
+      }))
+      .pipe(gulpIf(production, mediaQuery()))
+      .pipe(gulpIf(production, cssnano()))
+    .pipe(gulpIf(!production, sourcemaps.write('.')))
+    .pipe(gulp.dest(css_dest_path))
+    .pipe(browsersync.stream({ match: '**/*.css' }));
+}
 
 
 //
-// Clean
-// -----
+// Compile JS with Rollup
 //
-gulp.task('clean', () => {
-  return del([`./${config.dest}/**/*`]);
-});
-
-
-
-//
-// SASS task
-// ---------
-// Runs on every file in config.scss.main glob
-//
-gulp.task('sass', () => {
-  return gulp.src(config.sass.main)
-    .pipe(flatmap( (stream) => {
-      return stream
-        .pipe(gulpIf(!config.production, sourcemaps.init()))
-          .pipe(sass().on('error', sass.logError))
-          .pipe(autoprefixer({
-            grid: true,
-            browsers: config.autoprefixerBrowsers
-          }))
-          .pipe(gulpIf(config.production, mediaQuery()))
-          .pipe(gulpIf(config.production, cssnano()))
-        .pipe(gulpIf(!config.production, sourcemaps.write('.')))
-        .pipe(gulp.dest(config.sass.dest))
-        .pipe(browsersync.stream({ match: '**/*.css' }));
-      }));
-});
-
-
-
-//
-// JS task
-// -------------
-// Process each js file into a rollup bundle
-//
-gulp.task('js', () => {
-  return gulp.src([config.js.main])
-    .pipe(gulpIf( !config.production, sourcemaps.init() ))
+const compileJS = (src_path, dest_path) => {
+  return gulp.src([ src_path ])
+    .pipe(gulpIf( !production, sourcemaps.init() ))
       .pipe(rollupEach({
         // external: [],
         plugins: [
           rollupBabel(),
           rollupResolve(),
-          rollupESLint()
+          rollupESLint(),
+          rollupCommon()
         ],
       }, {
-        format: 'iife',
+        format: 'es',
         // globals: {}
       }))
-    .pipe(gulpIf( !config.production, sourcemaps.write('.') ))
-    .pipe(gulpIf( config.production, uglify() ))
-    .pipe(gulp.dest(config.js.dest));
-});
-
+    .pipe(gulpIf( !production, sourcemaps.write('.') ))
+    .pipe(gulpIf( production, uglify() ))
+    .pipe(gulp.dest( dest_path ));
+}
 
 
 //
-// Build Images
-// ------------
-// Process images with imagemin
+// Compile Images
 //
-gulp.task('images',  () => {
-  return gulp.src( config.images.src )
+const compileImages = (src_path, dest_path) => {
+  return gulp.src( src_path )
     .pipe(imagemin([
       imagemin.gifsicle({interlaced: true}),
       imagemin.jpegtran({progressive: true}),
@@ -216,7 +198,110 @@ gulp.task('images',  () => {
         ]
       })
     ]))
-    .pipe(gulp.dest(config.images.dest));
+    .pipe(gulp.dest(dest_path));
+}
+
+
+let watch_manifest      = {},
+    sass_task_manifest  = [],
+    js_task_manifest    = [],
+    image_task_manifest = [];
+
+
+//
+// Task Builder
+// ------------
+// Create tasks based on inputs
+//
+// @param task_name {string} Name of task to be used to suffix task types
+// @param base_path {string} Directory path for the task to do its thang
+//
+
+function task_builder(task_name, base_path) {
+  // Build task based watch files
+  let misc_watchers = [];
+
+  config.paths.watch_files.forEach((watch_path) => {
+    misc_watchers.push(base_path + watch_path);
+  });
+
+  watch_manifest[task_name] = {
+    sass: base_path + config.paths.sass.watch,
+    js: base_path + config.paths.js.watch,
+    images: base_path + config.paths.images.watch,
+    misc: misc_watchers
+  };
+
+  // Setup task names
+  const sass_task = 'sass:' + task_name;
+  const js_task = 'js:' + task_name;
+  const image_task = 'images:' + task_name;
+
+  // Push task names into task manifest arrays
+  sass_task_manifest.push(sass_task);
+  js_task_manifest.push(js_task);
+  image_task_manifest.push(image_task);
+
+  //
+  // SASS TASK
+  // ---------
+  // Can be run via `sass:TASK_NAME`
+  //
+  gulp.task(sass_task, () => {
+    var css_dest_path = base_path + config.paths.sass.dest;
+
+    return gulp.src( base_path + config.paths.sass.main )
+      .pipe(flatmap( (stream) => {
+        return compileSass(stream, css_dest_path)
+      }));
+  });
+
+
+  //
+  // JS TASK
+  // -------
+  // Can be run via `js:TASK_NAME`
+  //
+  gulp.task(js_task, () => {
+    return compileJS(
+      base_path + config.paths.js.main,
+      base_path + config.paths.js.dest
+    );
+  });
+
+
+  //
+  // MODULE IMAGES TASK
+  // ------------------
+  // Can be run via `images:TASK_NAME`
+  //
+  gulp.task(image_task, () => {
+    return compileImages(
+      base_path + config.paths.images.main,
+      base_path + config.paths.images.dest
+    );
+  });
+}
+
+
+
+// --------------------
+// MODULE & THEME TASKS
+// --------------------
+
+//
+// Drupal Definitions
+//
+const base_theme_path  = `web/themes/custom/`;
+const base_module_path = 'web/modules/custom/';
+
+
+config.drupal.modules.forEach((mod_dir) => {
+  task_builder('plugin--' + mod_dir, base_module_path + mod_dir + '/');
+});
+
+config.drupal.themes.forEach((theme_dir) => {
+  task_builder('theme--' + theme_dir, base_theme_path + theme_dir + '/');
 });
 
 
@@ -225,19 +310,43 @@ gulp.task('images',  () => {
 // Default task
 // ------------
 //
-gulp.task('default', gulp.series('clean', gulp.parallel('sass', 'js', 'images')));
+gulp.task('default', gulp.series(
+  gulp.parallel(
+    sass_task_manifest,
+    js_task_manifest,
+    image_task_manifest
+  )
+));
+
 
 
 //
 // Build task
 // ----------
-// Runs with config.production set to true
+// Runs with production set to true
 //
 gulp.task('build', gulp.series(
-  'clean',
   setProductionTrue,
   'default'
 ));
+
+
+
+//
+// Watch Tasks
+// -----------
+//
+gulp.task('watch', () => {
+
+  Object.keys(watch_manifest).forEach(function(task) {
+    const manifest = watch_manifest[task];
+    gulp.watch( manifest.sass, gulp.series('sass:' + task) );
+    gulp.watch( manifest.js, gulp.series('js:' + task, reload));
+    gulp.watch( manifest.images, gulp.series('images:' + task) );
+    gulp.watch( manifest.misc, reload);
+  });
+
+});
 
 
 
@@ -259,18 +368,6 @@ gulp.task('serve:run', (cb) => {
 
   browsersync.init(config.browsersyncOpts, cb);
 
-});
-
-
-
-//
-// Watch Tasks
-// -----------
-//
-gulp.task('watch', () => {
-  gulp.watch(config.sass.watch, gulp.series('sass'));
-  gulp.watch(config.js.watch, gulp.series('js', reload));
-  gulp.watch(config.miscWatchFiles, reload);
 });
 
 
