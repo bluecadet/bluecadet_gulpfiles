@@ -1,3 +1,5 @@
-node_modules/*
-dist/*
-.gulp-config.json
+# GITIGNORE for repo
+
+# Ignore sample dirs for testing
+# drupal/web
+# wordpress/web

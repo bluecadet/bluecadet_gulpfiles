@@ -90,7 +90,7 @@ const reload = (done) => {
 
 //
 // Check to see if a .gulp-config.json file exists, if
-// not, creates one from .ex-gulp-config.json
+// not, create one from .ex-gulp-config.json
 //
 const checkGulpConfig = (done) => {
 
@@ -222,21 +222,10 @@ gulp.task('images',  () => {
 
 
 //
-// Fonts Task
-// ----------
-// Copy fonts to dist folder
-//
-gulp.task('fonts', () => {
-  return gulp.src( config.fonts.src ).pipe(gulp.dest(config.fonts.dest));
-});
-
-
-
-//
 // Default task
 // ------------
 //
-gulp.task('default', gulp.series('clean', gulp.parallel('sass', 'js', 'images', 'fonts')));
+gulp.task('default', gulp.series('clean', gulp.parallel('sass', 'js', 'images')));
 
 
 //

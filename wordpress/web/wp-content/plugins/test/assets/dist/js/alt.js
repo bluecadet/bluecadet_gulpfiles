@@ -1,0 +1,1 @@
+var logger=function(o){console.log("Log: "+o)};logger("Hello World"),logger("alt.js");
