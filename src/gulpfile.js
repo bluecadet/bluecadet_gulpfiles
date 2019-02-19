@@ -144,23 +144,12 @@ const compileJS = (src_path, dest_path) => {
           rollupCommon({
             include: 'node_modules/**',
           }),
-          rollupBabel({
-            exclude: 'node_modules/**',
-          }),
+          rollupBabel(),
           rollupResolve({
             jsnext: true,
             main: true
           }),
-          rollupESLint.eslint({
-            "env" : {
-              "browser" : true,
-              "node" : true,
-              "es6" : true
-            },
-            "parserOptions": {
-              "sourceType": "module"
-            }
-          })
+          rollupESLint.eslint()
         ],
       }, {
         format: 'es',
