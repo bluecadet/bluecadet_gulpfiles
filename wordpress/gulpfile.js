@@ -60,8 +60,8 @@ const config = {
       dest:   dest_dir_name + '/css/',
     },
     images: {
-      main:    src_dir_name + '/images/**/*',
-      dest:   dest_dir_name + '/images/'
+      main:    src_dir_name + '/img/**/*',
+      dest:   dest_dir_name + '/img/'
     },
     watch_files: [
       '**/*.php',
