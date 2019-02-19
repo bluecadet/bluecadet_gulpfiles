@@ -5,3 +5,4 @@
 # wordpress/web
 node_modules
 .vscode
+src/web
