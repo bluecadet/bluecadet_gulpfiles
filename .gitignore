@@ -3,3 +3,5 @@
 # Ignore sample dirs for testing
 # drupal/web
 # wordpress/web
+node_modules
+.vscode
