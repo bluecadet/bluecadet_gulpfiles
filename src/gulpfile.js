@@ -1,9 +1,18 @@
+// import { rollup } from 'rollup';
+// import { eslint } from "rollup-plugin-eslint";
+// import babel from 'rollup-plugin-babel';
+// import commonjs from 'rollup-plugin-commonjs';
+// import resolve from 'rollup-plugin-node-resolve';
+
+// Config object
+const CONFIG = require('./.gulpconfig.js');
+
 // Util
 const gulp = require('gulp');
 const browsersync = require('browser-sync');
 const yargs = require('yargs').argv;
 const fs = require('fs');
-const del = require('del');
+// const del = require('del');
 const log = require('fancy-log');
 const flatmap = require('gulp-flatmap');
 const sourcemaps = require('gulp-sourcemaps');
@@ -17,6 +26,7 @@ const sass = require('gulp-sass');
 const autoprefixer = require('gulp-autoprefixer');
 const cssnano = require('gulp-cssnano');
 const mediaQuery = require('gulp-group-css-media-queries');
+const sassGlob = require('gulp-sass-glob');
 
 // Rollup and Scripts
 const rollup        = require('rollup');
@@ -28,55 +38,19 @@ const rollupESLint  = require('rollup-plugin-eslint');
 const uglify        = require('gulp-uglify');
 const imagemin      = require('gulp-imagemin');
 
+// GitHub Pages
+const ghPages = require('gulp-gh-pages');
 
-// Definition Vars
-const dest_dir_name = 'assets/dist';
-const src_dir_name  = 'assets/src';
-let   production    = yargs.production ? yargs.production : false;
+// Favicon
+const realFavicon = require('gulp-real-favicon');
 
+// InVision DSM
+// const flatpackDSM = require('flatpack-dsm');
 
-
-//
-// Config Settings
-//
-const config = {
-  drupal: {
-    themes: [           // Theme Directory Names
-      'bluecadet_base'
-    ],
-    modules: [          // Module Directory Names
-      'test'
-    ]
-  },
-  paths: {
-    js: {
-      main:    src_dir_name + '/js/*.js',
-      watch:   src_dir_name + '/js/**/*.js',
-      dest:   dest_dir_name + '/js/'
-    },
-    sass: {
-      main:    src_dir_name + '/scss/*.scss',
-      watch:   src_dir_name + '/scss/**/*.scss',
-      dest:   dest_dir_name + '/css/',
-    },
-    images: {
-      main:    src_dir_name + '/images/**/*',
-      dest:   dest_dir_name + '/images/'
-    },
-    watch_files: [
-      '**/*.php',
-      '**/*.html',
-      '**/*.twig'
-    ],
-  },
-  autoprefixerBrowsers: ['last 2 versions', '> 2%', 'ie 10', 'iOS 8', 'iOS 9'],
-  gulpConfig: '.gulp-config.json',
-  useProxy: true,
-  browsersyncOpts: {
-    ghostMode: false
-  }
-}
-
+// Definitions
+const localConfig = '.local-gulpconfig.json';
+const localConfigDefault = '.ex-local-gulpconfig.json';
+let production = yargs.production ? yargs.production : false;
 
 
 // -------------------
@@ -100,22 +74,22 @@ const reload = (done) => {
 //
 const checkGulpConfig = (done) => {
 
-  if ( !config.useProxy ) {
+  if ( !CONFIG.useProxy ) {
     return false;
   }
 
-  fs.access(config.gulpConfig, fs.constants.F_OK, (err) => {
+  fs.access(localConfig, fs.constants.F_OK, (err) => {
 
     if (err) {
-      let source = fs.createReadStream('.ex-gulp-config.json');
-      let dest = fs.createWriteStream(config.gulpConfig);
+      let source = fs.createReadStream(localConfigDefault);
+      let dest = fs.createWriteStream(localConfig);
       source.pipe(dest);
       source.on('end', () => {
-        log(`Edit the proxy value in ${config.gulpConfig} \n`.underline.red);
+        log(`Edit the proxy value in ${localConfig} to match your virtual host. \n`.underline.red);
         process.exit(1);
       });
       source.on('error', (err) => {
-        log(`Copy .ex-gulp-config.json to ${config.gulpConfig} and edit the proxy value \n`.underline.red);
+        log(`Copy ${localConfigDefault} to ${localConfig} and edit the proxy value  to match your virtual host. \n`.underline.red);
         process.exit(1);
       });
     }
@@ -142,14 +116,15 @@ const setProductionTrue = (done) => {
 const compileSass = (stream, css_dest_path) => {
   return stream
     .pipe(gulpIf(!production, sourcemaps.init()))
+      .pipe(sassGlob())
       .pipe(sass({
         includePaths: ['node_modules']
       }).on('error', sass.logError))
       .pipe(autoprefixer({
         grid: true,
-        browsers: config.autoprefixerBrowsers
+        browsers: CONFIG.autoprefixerBrowsers
       }))
-      .pipe(gulpIf(production, mediaQuery()))
+      // .pipe(gulpIf(production, mediaQuery()))
       .pipe(gulpIf(production, cssnano()))
     .pipe(gulpIf(!production, sourcemaps.write('.')))
     .pipe(gulp.dest(css_dest_path))
@@ -166,15 +141,32 @@ const compileJS = (src_path, dest_path) => {
       .pipe(rollupEach({
         // external: [],
         plugins: [
-          rollupBabel(),
-          rollupResolve(),
-          rollupESLint(),
-          rollupCommon()
+          rollupCommon({
+            include: 'node_modules/**',
+          }),
+          rollupBabel({
+            exclude: 'node_modules/**',
+          }),
+          rollupResolve({
+            jsnext: true,
+            main: true
+          }),
+          rollupESLint.eslint({
+            "env" : {
+              "browser" : true,
+              "node" : true,
+              "es6" : true
+            },
+            "parserOptions": {
+              "sourceType": "module"
+            }
+          })
         ],
       }, {
         format: 'es',
         // globals: {}
-      }))
+      },
+      rollup ))
     .pipe(gulpIf( !production, sourcemaps.write('.') ))
     .pipe(gulpIf( production, uglify() ))
     .pipe(gulp.dest( dest_path ));
@@ -221,14 +213,14 @@ function task_builder(task_name, base_path) {
   // Build task based watch files
   let misc_watchers = [];
 
-  config.paths.watch_files.forEach((watch_path) => {
+  CONFIG.paths.watch_files.forEach((watch_path) => {
     misc_watchers.push(base_path + watch_path);
   });
 
   watch_manifest[task_name] = {
-    sass: base_path + config.paths.sass.watch,
-    js: base_path + config.paths.js.watch,
-    images: base_path + config.paths.images.watch,
+    sass: base_path + CONFIG.paths.sass.watch,
+    js: base_path + CONFIG.paths.js.watch,
+    images: base_path + CONFIG.paths.images.main,
     misc: misc_watchers
   };
 
@@ -248,9 +240,9 @@ function task_builder(task_name, base_path) {
   // Can be run via `sass:TASK_NAME`
   //
   gulp.task(sass_task, () => {
-    var css_dest_path = base_path + config.paths.sass.dest;
+    var css_dest_path = base_path + CONFIG.paths.sass.dest;
 
-    return gulp.src( base_path + config.paths.sass.main )
+    return gulp.src( base_path + CONFIG.paths.sass.main )
       .pipe(flatmap( (stream) => {
         return compileSass(stream, css_dest_path)
       }));
@@ -264,8 +256,8 @@ function task_builder(task_name, base_path) {
   //
   gulp.task(js_task, () => {
     return compileJS(
-      base_path + config.paths.js.main,
-      base_path + config.paths.js.dest
+      base_path + CONFIG.paths.js.main,
+      base_path + CONFIG.paths.js.dest
     );
   });
 
@@ -277,8 +269,8 @@ function task_builder(task_name, base_path) {
   //
   gulp.task(image_task, () => {
     return compileImages(
-      base_path + config.paths.images.main,
-      base_path + config.paths.images.dest
+      base_path + CONFIG.paths.images.main,
+      base_path + CONFIG.paths.images.dest
     );
   });
 }
@@ -289,27 +281,64 @@ function task_builder(task_name, base_path) {
 // MODULE & THEME TASKS
 // --------------------
 
-//
-// Drupal Definitions
-//
-const base_theme_path  = `web/themes/custom/`;
-const base_module_path = 'web/modules/custom/';
 
-
-config.drupal.modules.forEach((mod_dir) => {
-  task_builder('plugin--' + mod_dir, base_module_path + mod_dir + '/');
+CONFIG.project.modules.forEach((mod_dir) => {
+  task_builder('module--' + mod_dir, CONFIG.modules_path + mod_dir + '/');
 });
 
-config.drupal.themes.forEach((theme_dir) => {
-  task_builder('theme--' + theme_dir, base_theme_path + theme_dir + '/');
+CONFIG.project.themes.forEach((theme_dir) => {
+  task_builder('theme--' + theme_dir, CONFIG.themes_path + theme_dir + '/');
 });
 
 
 
+
+
+
+
 //
-// Default task
+// InVision DSM
+//
+// gulp.task('dsm', done => {
+
+//   if (!config.useDSM) {
+//     return done();
+//   }
+
+//   flatpackDSM({
+//     urls: {
+//       json: 'https://bluecadet.invisionapp.com/dsm-export/bluecadet/harvard-college/style-data.json?exportFormat=list',
+//       icons: 'https://bluecadet.invisionapp.com/dsm-export/bluecadet/harvard-college/icons.zip',
+//     },
+//     dest: {
+//       colors: `${base_theme_path}/${base_theme}/assets/src/scss/01-Settings/_vars.dsm-colors.scss`,
+//       type: `${base_theme_path}/${base_theme}/assets/src/scss/01-Settings/_vars.dsm-typestyles.scss`,
+//       icons: `${base_theme_path}/${base_theme}/assets/src/images/icons`
+//     },
+//     fractal: {
+//       enable: true,
+//       colors: {
+//         file: `${base_theme_path}/${base_theme}/fractal/components/01-brand/colors/colors.config.json`,
+//         context: 'colors'
+//       }
+//     },
+//     colorPrefix: '',
+//     replacePx: {
+//       enable: true,
+//       val: 'rem',
+//       remUseTenth: true
+//     }
+//   });
+
+//   done();
+// });
+
+
+
 // ------------
-//
+// DEFAULT TASK
+// ------------
+
 gulp.task('default', gulp.series(
   gulp.parallel(
     sass_task_manifest,
@@ -320,22 +349,10 @@ gulp.task('default', gulp.series(
 
 
 
-//
-// Build task
-// ----------
-// Runs with production set to true
-//
-gulp.task('build', gulp.series(
-  setProductionTrue,
-  'default'
-));
+// ------------
+// WATCH TASKS
+// ------------
 
-
-
-//
-// Watch Tasks
-// -----------
-//
 gulp.task('watch', () => {
 
   Object.keys(watch_manifest).forEach(function(task) {
@@ -346,38 +363,212 @@ gulp.task('watch', () => {
     gulp.watch( manifest.misc, reload);
   });
 
+  // Fractal
+  if ( CONFIG.fractal.use ) {
+    const fractalSass = CONFIG.fractal.components + '/**/*.scss';
+    const fractalTwig = CONFIG.fractal.components + '/**/*.twig';
+    const fractalJS = CONFIG.fractal.components + '/**/*.js';
+    const fractalJSON = CONFIG.fractal.components + '/**/*.json';
+
+    gulp.watch( fractalSass, gulp.series('sass:theme--' + CONFIG.base_theme) );
+    gulp.watch( [fractalTwig, fractalJS, fractalJSON], reload );
+  }
+
 });
 
 
 
+// ------------
+// SERVE TASKS
+// ------------
+
 //
-// Run Browsersync
+// Init CMS Browsersync Server
 //
-gulp.task('serve:run', (cb) => {
+gulp.task('startsync:cms', (cb) => {
 
   if ( config.useProxy ) {
-    const g_config = JSON.parse(fs.readFileSync(config.gulpConfig));
+    const g_config = JSON.parse(fs.readFileSync(localConfig));
 
     if (g_config.proxy == null) {
-      log(`Edit the proxy value in ${config.gulpConfig} \n`.underline.red);
+      log(`Edit the proxy value in ${localConfig} \n`.underline.red);
       process.exit(1);
     }
 
     config.browsersyncOpts['proxy'] = g_config.proxy;
   }
 
-  browsersync.init(config.browsersyncOpts, cb);
+  browsersync.init(CONFIG.browsersyncOpts, cb);
+
+});
+
+
+//
+// Serve CMS in Browsersync
+//
+gulp.task('serve', gulp.series(
+  checkGulpConfig,
+  'default',
+  'startsync:cms',
+  'watch',
+));
+
+
+
+// -----------------
+// FAVICON GENERATOR
+// -----------------
+
+//
+// Generate Icons
+//
+gulp.task('favicon:generate', function (done) {
+
+  if ( CONFIG.FAVICON_DATA ) {
+    realFavicon.generateFavicon(FAVICON_CONFIG, function () {
+      done();
+    });
+  } else {
+    done();
+  }
+});
+
+
+
+//
+// Generate Icon HTML
+//
+gulp.task('favicon:markup', function (done) {
+  if ( CONFIG.FAVICON_DATA ) {
+    return gulp.src([CONFIG.favicon.html_file])
+      .pipe(realFavicon.injectFaviconMarkups(JSON.parse(fs.readFileSync(CONFIG.favicon.data_file)).favicon.html_code))
+      .pipe(gulp.dest(CONFIG.favicon.dest));
+  } else {
+    done();
+  }
+});
+
+
+
+//
+// Run Favicon tasks together
+//
+gulp.task('favicon',
+  gulp.series(
+    'favicon:generate',
+    'favicon:markup'
+  )
+);
+
+
+
+// ----------
+// BUILD TASK
+// ----------
+
+gulp.task('build', gulp.series(
+  setProductionTrue,    // Runs with production set to true
+  'default',
+  'favicon'
+));
+
+
+
+// -------
+// FRACTAL
+// -------
+
+let fractal;
+let logger;
+let fractalServer;
+
+if ( CONFIG.fractal.use ) {
+
+  // Init Fractal
+  fractal = require('./fractal.js');
+  logger = fractal.cli.console;
+
+  // Set Fractal Browsersync Options
+  fractal.web.set('server.syncOptions', {
+    open: true,
+    notify: true,
+  });
+
+  // Set Fractal Browsersync Options
+  fractalServer = fractal.web.server({
+    sync: true
+  });
+
+}
+
+
+
+//
+// Init Fractal Browsersync Server
+//
+gulp.task('startsync:fractal', function(done){
+
+  if (!CONFIG.fractal.use) {
+    return done();
+  }
+
+  fractalServer.on('error', err => {
+    logger.error(err.message);
+    // return process.exit();     // Uncomment to stop watch on fail
+  });
+
+  return fractalServer.start().then(() => {
+    logger.success(`Fractal server is now running at ${fractalServer.url}`);
+    done();
+  });
 
 });
 
 
 
 //
-// Serve task - Run Browser-sync
+// Serve Fractal
 //
-gulp.task('serve', gulp.series(
+gulp.task('fractal', gulp.series(
   checkGulpConfig,
   'default',
-  'serve:run',
-  'watch'
+  'startsync:fractal',
+  'watch',
+));
+
+
+
+//
+// Build Fractal
+//
+gulp.task('fractal:build', function(done) {
+  if ( CONFIG.fractal.use ) {
+    const builder = fractal.web.builder();
+    builder.on('progress', (completed, total) => logger.update(`Exported ${completed} of ${total} items`, 'info'));
+    builder.on('error', err => logger.error(err.message));
+    return builder.build().then(() => {
+      logger.success('Fractal build completed!');
+    });
+  }
+
+});
+
+// Copy Fractal Build to Netlify Branch
+gulp.task('fractal:build:branch', function(done) {
+
+  if ( CONFIG.fractal.use ) {
+    return gulp.src('./fractal-build/**/*')
+      .pipe(ghPages({
+        branch: 'netlify'
+      }));
+  } else {
+    done();
+  }
+});
+
+// Deploy Fractal to Netlify Branch
+gulp.task('fractal:deploy', gulp.series(
+  'build',
+  'fractal:build',
+  'fractal:build:branch',
 ));
