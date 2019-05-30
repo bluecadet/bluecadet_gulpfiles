@@ -1,8 +1,3 @@
-// import { rollup } from 'rollup';
-// import { eslint } from "rollup-plugin-eslint";
-// import babel from 'rollup-plugin-babel';
-// import commonjs from 'rollup-plugin-commonjs';
-// import resolve from 'rollup-plugin-node-resolve';
 
 // Config object
 const CONFIG = require('./.gulpconfig.js');
@@ -18,8 +13,9 @@ const flatmap = require('gulp-flatmap');
 const sourcemaps = require('gulp-sourcemaps');
 const gulpIf = require('gulp-if');
 const colors = require('colors');
-const path = require('path');
-const util = require('util');
+const using = require('gulp-using');
+// const path = require('path');
+// const util = require('util');
 
 // Sass
 const sass = require('gulp-sass');
@@ -115,6 +111,7 @@ const setProductionTrue = (done) => {
 //
 const compileSass = (stream, css_dest_path) => {
   return stream
+    .pipe(using({prefix: 'Processing'}))
     .pipe(gulpIf(!production, sourcemaps.init()))
       .pipe(sassGlob())
       .pipe(sass({
@@ -135,8 +132,9 @@ const compileSass = (stream, css_dest_path) => {
 //
 // Compile JS with Rollup
 //
-const compileJS = (src_path, dest_path) => {
-  return gulp.src([ src_path ])
+const compileJS = (src_path, dest_path, js_task) => {
+  return gulp.src([ src_path ], {since: gulp.lastRun(js_task)})
+    .pipe(using({prefix: 'Processing'}))
     .pipe(gulpIf( !production, sourcemaps.init() ))
       .pipe(rollupEach({
         // external: [],
@@ -146,8 +144,7 @@ const compileJS = (src_path, dest_path) => {
           }),
           rollupBabel(),
           rollupResolve({
-            jsnext: true,
-            main: true
+            mainFields: ['module', 'main'],
           }),
           rollupESLint.eslint()
         ],
@@ -165,8 +162,8 @@ const compileJS = (src_path, dest_path) => {
 //
 // Compile Images
 //
-const compileImages = (src_path, dest_path) => {
-  return gulp.src( src_path )
+const compileImages = (src_path, dest_path, image_task) => {
+  return gulp.src( src_path, {since: gulp.lastRun(image_task)} )
     .pipe(imagemin([
       imagemin.gifsicle({interlaced: true}),
       imagemin.jpegtran({progressive: true}),
@@ -231,7 +228,7 @@ function task_builder(task_name, base_path) {
   gulp.task(sass_task, () => {
     var css_dest_path = base_path + CONFIG.paths.sass.dest;
 
-    return gulp.src( base_path + CONFIG.paths.sass.main )
+    return gulp.src( base_path + CONFIG.paths.sass.main, {since: gulp.lastRun(sass_task)} )
       .pipe(flatmap( (stream) => {
         return compileSass(stream, css_dest_path)
       }));
@@ -246,7 +243,8 @@ function task_builder(task_name, base_path) {
   gulp.task(js_task, () => {
     return compileJS(
       base_path + CONFIG.paths.js.main,
-      base_path + CONFIG.paths.js.dest
+      base_path + CONFIG.paths.js.dest,
+      js_task
     );
   });
 
@@ -259,7 +257,8 @@ function task_builder(task_name, base_path) {
   gulp.task(image_task, () => {
     return compileImages(
       base_path + CONFIG.paths.images.main,
-      base_path + CONFIG.paths.images.dest
+      base_path + CONFIG.paths.images.dest,
+      image_task
     );
   });
 }
