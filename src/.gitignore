@@ -1,0 +1,6 @@
+# GITIGNORE for root
+
+node_modules
+.vscode
+web
+.bcdb.js

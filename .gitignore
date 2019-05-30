@@ -1,6 +1,6 @@
 # GITIGNORE for repo
 
 # Ignore sample dirs for testing
-# drupal/web
-# wordpress/web
+node_modules
 .vscode
+src/web
